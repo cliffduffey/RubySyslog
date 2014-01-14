@@ -1,6 +1,8 @@
 module RubySyslog
   require 'gserver'
-  require 'lib/threadpool'
+  require 'resque'
+  require_relative 'logqueue'
+  require_relative 'lib/threadpool'
   
   DEFAULT_SERVER_CONFIG = {
 	:protocol	=> 'tcp',
@@ -21,19 +23,9 @@ module RubySyslog
 	# loads all models, loads Storage, LogQueue, process ThreadPool, storage ThreadPool,
 	# LogMutex (semaphore), and start the UDP and TCP listeners
 	def initialize(config = DEFAULT_SERVER_CONFIG, *args)
-		@parser = Parser.new(config)
-		@storage = Storage.new(config)
-		@storage.connect
-		@storage.load_models
-		
-		puts "Storage loaded            [  OK  ]" if config[:verbose]
 		@config = config
 		@log_queue = LogQueue.new
 		puts "Log Queue loaded          [  OK  ]" if config[:verbose]
-		@process_pool = ThreadPool.new(config[:process_threads])
-		puts "Process Pool [#{@process_pool.size}] loaded  [  OK  ]" if config[:verbose]
-		@storage_pool = ThreadPool.new(config[:storage_threads])
-		puts "Storage Pool [#{@storage_pool.size}] loaded   [  OK  ]" if config[:verbose]
 		@mutex = LogMutex.new
 		puts "Log Mutex loaded          [  OK  ]" if config[:verbose]
 		
@@ -77,19 +69,14 @@ module RubySyslog
 	end
 	
 	# This methods tells the server to pull all logs from the LogQueue and 'process' them.
-	# Essentially, this moves logs from the incoming LogQueue to a process ThreadPool for
-	# controlled processing. This method prevents an insurge of messages from eating up all
-	# the server's CPU by limiting the number of logs processed at a time. After the log is
-	# parsed in the process pool, it is queued up for storage in the storage ThreadPool.
+	# Essentially, this moves logs from the incoming LogQueue to the storage_queue in a
+	# Redis database for background processing. Each job parses the syslog payload and then
+	# saves it to a database.
 	def process_logs
 		until @log_queue.empty?
 			@queue_flushed = false if @queue_flushed
 			log = pop_log
-			@process_pool.add_job {
-				puts "Processing Log: #{log.object_id.to_s(16)}"
-				parsed_log = @parser.parse log
-				@storage_pool.add_job {@storage.store_log parsed_log}
-			}
+			Resque.enqueue(Storage, log)
 		end
 		if !@queue_flushed
 			puts "Log Queue Flush Complete @ #{Time.now}" if @config[:verbose] and !logs_queued?

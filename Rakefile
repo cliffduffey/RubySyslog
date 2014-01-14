@@ -1,5 +1,9 @@
 require 'active_record'
-require 'yaml'
+require 'yaml'	
+require_relative 'storage'
+require 'resque/tasks'
+
+# to start the resqueue workers: 'COUNT=<number of workers> QUEUE=storage_queue rake resque:workers'
 
 task :default => :migrate
 

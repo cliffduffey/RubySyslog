@@ -2,7 +2,7 @@
     adapter: mysql
     database: syslog_development
     username: root
-    #password:
+    password: dyslexic
     host: localhost
     pool: 15
     timeout: 5000

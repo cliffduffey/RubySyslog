@@ -25,9 +25,8 @@
 #  
 #   server.shutdown
 
-require 'parser'
-require 'storage'
-require 'server'
+require_relative 'storage'
+require_relative 'server'
 require 'yaml'
 
 config = YAML.load_file('config.yaml')
